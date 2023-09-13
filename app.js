@@ -1,6 +1,8 @@
 const i2c = require('i2c-bus');
 const c = require('./constants.js');
 const debug = require('debug');
+const EventEmitter = require('events');
+const Tag = require('./tag.js');
 
 class PN532 {
     constructor(address = c.I2C_ADDRESS, bus = 1) {
@@ -9,6 +11,13 @@ class PN532 {
 
         this.low_power = true;
         this.debug = debug("pn532");
+
+        this.poll_interval = null;
+        this.poll_timeout = null;
+
+        this.events = new EventEmitter();
+
+        this.current_cards = new Map();
     }
 
     async init() {
@@ -21,14 +30,44 @@ class PN532 {
         }
     }
 
-    poll() {
+    poll(interval = 500) {
         if (!this._wire) throw new Error("not initialized");
+        if (this.poll_timeout !== null) throw new Error("already polling");
+
+        this.poll_interval = interval;
+        this.poll_timeout = true;
 
         var scanTag = async () => {
-            let tag = await this.scanTag();
-            console.log(tag);
+            let start = Date.now();
+            let tags = await this.scanTag();
 
-            setTimeout(() => scanTag(), 1000);
+            let current_uids = new Set();
+
+            tags.forEach(tag => {
+                let uid = tag.getUidString();
+                current_uids.add(uid);
+
+                //if we already know it, ignore
+                if (this.current_cards.has(uid)) return;
+
+                //seems to be a new one
+                this.current_cards.set(uid, tag);
+                this.events.emit("tag", tag);
+            });
+
+            this.current_cards.forEach(t => {
+                if (!current_uids.has(t.getUidString())) {
+                    //tag is no longer there
+                    this.events.emit("vanished", t);
+                    this.current_cards.delete(t.getUidString());
+                }
+            });
+
+            //the scan can take between 0 and interval ms because it resolves instantly if a card is present
+            let passed = Date.now() - start;
+            let remaining = Math.max(0, interval - passed);
+
+            this.poll_timeout = setTimeout(() => scanTag(), remaining);
         };
 
         scanTag();
@@ -53,34 +92,43 @@ class PN532 {
         var maxNumberOfTargets = 0x01;
         var baudRate = c.CARD_ISO14443A;
 
+        let start = Date.now();
+
         try {
             this.debug("Listening for targets passively");
-            if (await this.sendCommand(c.COMMAND_IN_LIST_PASSIVE_TARGET, [maxNumberOfTargets, baudRate], 1000)) {
-                let response = await this.processResponse(c.COMMAND_IN_LIST_PASSIVE_TARGET, 30, 1000);
+            if (await this.sendCommand(c.COMMAND_IN_LIST_PASSIVE_TARGET, [maxNumberOfTargets, baudRate], this.poll_interval)) {
+                let timeout = this.poll_interval - (Date.now() - start);
+                this.debug("Sent command, waiting " + timeout + "ms if there is something to read");
 
-                // If no response is available return null to indicate no card is present.
-                if (!response) return null;
+                let response = await this.processResponse(c.COMMAND_IN_LIST_PASSIVE_TARGET, 30, timeout);
+
                 // Check only 1 card with up to a 7 byte UID is present.
-                if (response[0] != 0x01)
-                    throw new Error("More than one card detected!")
+                if (response[0] != 0x01) throw new Error("More than one card detected!")
+                if (response[5] > 7) throw new Error("Found card with unexpectedly long UID!")
 
-                if (response[5] > 7)
-                    throw new Error("Found card with unexpectedly long UID!")
+                let uid = response.subarray(6, 6 + response[5]);
 
-                // Return UID of card.
-                return response.slice(6, 6 + response[5]);
+                this.debug("Read uid %o", uid);
+
+                return [new Tag(uid)];
             }
         } catch (err) {
-            console.error(err);
+            if (err.message === "Timed out") {
+                this.debug("Timed out, no card present");
+                //timed out, this means there was no tag to read
+                return [];
+            }
+
+            this.debug(err);
         }
 
-        return false;
+        throw new Error("Failed to scan");
     }
 
     async sendCommand(command, params, timeout) {
         this.debug("Sending command %o", [command, ...params]);
 
-        if (this.low_power) this.wakeup();
+        if (this.low_power) await this.wakeup();
 
         // Build frame data with command and parameters.
         let data = Buffer.alloc(2 + params.length);
@@ -147,29 +195,29 @@ class PN532 {
         }
     }
 
+    /**
+     * Poll PN532 if status byte is ready, up to "timeout" seconds
+     * @param {Number} timeout 
+     * @returns 
+     */
     waitForReady(timeout = 1000) {
         return new Promise((resolve, reject) => {
-            // Poll PN532 if status byte is ready, up to "timeout" seconds
             let status = Buffer.alloc(1);
             let start = Date.now();
 
             const nextPoll = () => {
-                this.debug("polling");
-
-                this._wire.i2cRead(this._address, 1, status).then(data => {
-                    this.debug(data);
-                }).catch(e => {
+                this._wire.i2cRead(this._address, 1, status).catch(e => {
+                    //we do not care about errors here
                     this.debug(e);
                 }).then(() => {
-                    this.debug("polled, status is " + status[0])
                     // If we are no longer busy return
                     if (status[0] == 0x01) return resolve();
 
                     //if timeout reached, return
-                    if ((Date.now() - start) >= timeout) return reject("Timed out");
+                    if ((Date.now() - start) >= timeout) return reject(new Error("Timed out"));
 
                     setTimeout(nextPoll, 10);
-                })
+                });
             }
 
             return nextPoll();
@@ -291,4 +339,7 @@ class PN532 {
     let asd = new PN532();
     await asd.init();
     asd.poll();
+
+    asd.events.on("tag", console.log);
+    asd.events.on("vanished", t => console.log(t, "vanished"));
 })();
