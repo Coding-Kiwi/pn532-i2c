@@ -16,15 +16,16 @@ class Tag {
      * @returns {Number} amount of read bytes
      */
     readISO14443A(buffer) {
-        this.sens_res = (buffer[0] << 8) || buffer[1];
-        this.sel_res = buffer[2];
+        this.num = buffer[0];
+        this.sens_res = (buffer[1] << 8) || buffer[2];
+        this.sel_res = buffer[3];
 
-        let id_length = buffer[3];
-        this.uid = buffer.subarray(4, 4 + id_length);
+        let id_length = buffer[4];
+        this.uid = buffer.subarray(5, 5 + id_length);
 
         //since we are not using ISO/IEC14443-4 PCD mode there is not ATS data
 
-        return 4 + id_length;
+        return 5 + id_length;
     }
 
     getUidString() {

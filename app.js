@@ -47,8 +47,11 @@ class PN532 {
                 let uid = tag.getUidString();
                 current_uids.add(uid);
 
-                //if we already know it, ignore
-                if (this.current_cards.has(uid)) return;
+                if (this.current_cards.has(uid)) {
+                    //update the num
+                    this.current_cards.get(uid).num = tag.num;
+                    return;
+                }
 
                 //seems to be a new one
                 this.current_cards.set(uid, tag);
@@ -67,10 +70,21 @@ class PN532 {
             let passed = Date.now() - start;
             let remaining = Math.max(0, interval - passed);
 
-            this.poll_timeout = setTimeout(() => scanTag(), remaining);
+            //if polling has not been stopped
+            if (this.poll_interval !== null) {
+                this.poll_timeout = setTimeout(() => scanTag(), remaining);
+            }
         };
 
         scanTag();
+    }
+
+    stopPoll() {
+        if (this.poll_timeout !== null) {
+            clearTimeout(this.poll_timeout);
+        }
+
+        this.poll_interval = null;
     }
 
     async getFirmwareVersion() {
@@ -95,6 +109,11 @@ class PN532 {
         let start = Date.now();
 
         try {
+            if (this.current_cards.size) {
+                this.debug("Releasing all targets");
+                await this.sendCommand(c.COMMAND_IN_RELEASE, [0x00], 500);
+            }
+
             this.debug("Listening for targets passively");
             if (await this.sendCommand(c.COMMAND_IN_LIST_PASSIVE_TARGET, [maxNumberOfTargets, baudRate], this.poll_interval)) {
                 let timeout = this.poll_interval - (Date.now() - start);
@@ -108,19 +127,19 @@ class PN532 {
                 let res = [];
 
                 let tag = new Tag();
-                let offset = tag.readISO14443A(response.subarray(2));
+                let offset = tag.readISO14443A(response.subarray(1));
+                if (tag.uid.length !== 4) throw new Error("Expected 4 byte uid");
+
                 res.push(tag);
 
-                if (maxNumberOfTargets > 1 && response.length > 3 + offset) {
+                if (maxNumberOfTargets > 1 && response.length > 2 + offset) {
                     let tag = new Tag();
-                    tag.readISO14443A(response.subarray(3 + offset));
+                    tag.readISO14443A(response.subarray(1 + offset));
+                    if (tag.uid.length !== 4) throw new Error("Expected 4 byte uid");
                     res.push(tag);
                 }
 
                 this.debug("Read tags %o", res);
-
-                this.debug("Releasing all targets");
-                await this.sendCommand(c.COMMAND_IN_RELEASE, [0x00], 500);
 
                 return res;
             }
@@ -193,12 +212,12 @@ class PN532 {
         return response.subarray(2);
     }
 
-    call(command, response_length = 0, params = [], timeout = 1000) {
-        if (!this.sendCommand(command, params, timeout)) {
+    async call(command, response_length = 0, params = [], timeout = 1000) {
+        if (!await this.sendCommand(command, params, timeout)) {
             return null;
         }
 
-        return this.processResponse(command, response_length, timeout)
+        return await this.processResponse(command, response_length, timeout)
     }
 
     delay_ms(milliseconds) {
@@ -348,13 +367,80 @@ class PN532 {
         this.low_power = false;
         await this.call(c.COMMAND_SAMCONFIGURATION, 0, [0x01, 0x14, 0x01]);
     }
+
+    async powerdown() {
+        this.debug("sending powerdown");
+        //Enable wakeup on I2C, SPI, UART
+        let resp = await this.call(c.COMMAND_POWER_DOWN, 0, [0xB0, 0x00]);
+
+        //if 0, success
+        this.low_power = resp[0] === 0;
+    }
+
+    async readBlock(tag, blockAddress, authKey, authType = c.MIFARE_COMMAND_AUTH_A) {
+        //try to read mifare classic card
+
+        await this.authenticateBlock(tag, blockAddress, authKey, authType);
+
+        let resp = await this.call(c.COMMAND_IN_DATA_EXCHANGE, 17, [
+            tag.num, //number of the card
+            c.MIFARE_COMMAND_READ,
+            blockAddress & 0xFF //block address,
+        ]);
+
+        if (resp[0] !== 0) throw new Error("Failed to read block " + blockAddress + " " + resp[0]);
+
+        return resp.subarray(1);
+    }
+
+    async writeBlock(tag, blockAddress, data, authKey, authType = c.MIFARE_COMMAND_AUTH_A) {
+        if (!data || data.length != 16) {
+            throw new Error("Data must be an array of 16 bytes!");
+        }
+
+        await this.authenticateBlock(tag, blockAddress, authKey, authType);
+
+        let resp = await this.call(c.COMMAND_IN_DATA_EXCHANGE, 1, [
+            tag.num, //number of the card
+            c.MIFARE_COMMAND_WRITE_16,
+            blockAddress & 0xFF, //block address
+            ...data
+        ]);
+
+        if (resp[0] !== 0) throw new Error("Failed to write block " + blockAddress + " " + resp[0]);
+    }
+
+    async authenticateBlock(tag, blockAddress, authKey, authType = c.MIFARE_COMMAND_AUTH_A) {
+        //try to read mifare classic card
+
+        //fallback to factory default KeyA
+        if (!authKey) authKey = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+
+        let params = [
+            tag.num, //number of the card
+            authType & 0xFF, //Auth type A or B
+            blockAddress & 0xFF, //block address,
+            ...authKey,
+            ...tag.uid
+        ];
+
+        let resp = await this.call(c.COMMAND_IN_DATA_EXCHANGE, 1, params);
+
+        if (resp[0] !== 0) throw new Error("Failed to authenticate block " + blockAddress + " " + resp[0])
+    }
 }
 
 (async function () {
     let asd = new PN532();
     await asd.init();
     asd.poll();
+    // console.log(await asd.getFirmwareVersion());
+    // await asd.powerdown();
 
-    asd.events.on("tag", console.log);
-    asd.events.on("vanished", t => console.log(t, "vanished"));
+    asd.events.on("tag", async tag => {
+        asd.stopPoll();
+        // console.log(await asd.writeBlock(tag, 4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        // console.log(await asd.writeBlock(tag, 4, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]));
+        // console.log(await asd.readBlock(tag, 4));
+    });
 })();
