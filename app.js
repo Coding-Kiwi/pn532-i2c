@@ -30,7 +30,7 @@ class PN532 {
         }
     }
 
-    poll(interval = 500) {
+    poll(interval = 1000) {
         if (!this._wire) throw new Error("not initialized");
         if (this.poll_timeout !== null) throw new Error("already polling");
 
@@ -89,7 +89,7 @@ class PN532 {
     }
 
     async scanTag() {
-        var maxNumberOfTargets = 0x01;
+        var maxNumberOfTargets = 0x02;
         var baudRate = c.CARD_ISO14443A;
 
         let start = Date.now();
@@ -98,19 +98,31 @@ class PN532 {
             this.debug("Listening for targets passively");
             if (await this.sendCommand(c.COMMAND_IN_LIST_PASSIVE_TARGET, [maxNumberOfTargets, baudRate], this.poll_interval)) {
                 let timeout = this.poll_interval - (Date.now() - start);
-                this.debug("Sent command, waiting " + timeout + "ms if there is something to read");
+                this.debug("Listen command sent, waiting " + timeout + "ms if there is something to read");
 
                 let response = await this.processResponse(c.COMMAND_IN_LIST_PASSIVE_TARGET, 30, timeout);
 
                 // Check only 1 card with up to a 7 byte UID is present.
-                if (response[0] != 0x01) throw new Error("More than one card detected!")
-                if (response[5] > 7) throw new Error("Found card with unexpectedly long UID!")
+                if (response[0] > maxNumberOfTargets) throw new Error("Card count mismatch")
 
-                let uid = response.subarray(6, 6 + response[5]);
+                let res = [];
 
-                this.debug("Read uid %o", uid);
+                let tag = new Tag();
+                let offset = tag.readISO14443A(response.subarray(2));
+                res.push(tag);
 
-                return [new Tag(uid)];
+                if (maxNumberOfTargets > 1 && response.length > 3 + offset) {
+                    let tag = new Tag();
+                    tag.readISO14443A(response.subarray(3 + offset));
+                    res.push(tag);
+                }
+
+                this.debug("Read tags %o", res);
+
+                this.debug("Releasing all targets");
+                await this.sendCommand(c.COMMAND_IN_RELEASE, [0x00], 500);
+
+                return res;
             }
         } catch (err) {
             if (err.message === "Timed out") {
@@ -149,6 +161,8 @@ class PN532 {
 
         await this.waitForReady(timeout);
 
+        this.debug("Reading ACK");
+
         // Verify ACK response and wait to be ready for function response.
         let ret = await this.readData(c.ACK.length);
         if (ret.compare(new Buffer.from(c.ACK)) != 0) {
@@ -175,7 +189,8 @@ class PN532 {
             throw new Error("Received unexpected command response!")
 
         // Return response data.
-        return response.slice(2);
+        this.debug("Read %o", response);
+        return response.subarray(2);
     }
 
     call(command, response_length = 0, params = [], timeout = 1000) {
@@ -320,7 +335,7 @@ class PN532 {
         this.debug("Reading " + count + " from " + this._address);
         await this._wire.i2cRead(this._address, count + 1, frame);  // ok get the data, plus statusbyte
 
-        return frame.slice(1);  // don't return the status byte
+        return frame.subarray(1);  // don't return the status byte
     }
 
     /**
