@@ -1,4 +1,4 @@
-class Tag {
+export default class Tag {
     constructor() {
         this.uid = null;
     }
@@ -36,5 +36,3 @@ class Tag {
         return tag.getUidString() === this.getUidString();
     }
 }
-
-module.exports = Tag;

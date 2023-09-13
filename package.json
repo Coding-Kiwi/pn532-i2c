@@ -2,5 +2,27 @@
   "dependencies": {
     "debug": "^4.3.4",
     "i2c-bus": "^5.2.3"
-  }
+  },
+  "name": "pn532-i2c",
+  "version": "1.0.0",
+  "description": "Package for using the pn532 nfc module via i2c",
+  "main": "index.js",
+  "type": "module",
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://git.codingkiwi.de/codingkiwi/pn532-i2c"
+  },
+  "keywords": [
+    "pn532",
+    "i2c",
+    "node",
+    "raspberry",
+    "pi",
+    "read",
+    "write",
+    "poll"
+  ],
+  "author": "CodingKiwi",
+  "license": "ISC"
 }

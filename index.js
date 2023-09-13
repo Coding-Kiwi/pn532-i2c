@@ -1,11 +1,13 @@
-const i2c = require('i2c-bus');
-const c = require('./constants.js');
-const debug = require('debug');
-const EventEmitter = require('events');
-const Tag = require('./tag.js');
+import i2c from 'i2c-bus';
+import debug from 'debug';
+import EventEmitter from 'events';
 
-class PN532 {
-    constructor(address = c.I2C_ADDRESS, bus = 1) {
+import * as constants from './constants.js';
+
+import Tag from './tag.js';
+
+export default class PN532 {
+    constructor(address = constants.I2C_ADDRESS, bus = 1) {
         this._address = address;
         this._bus = bus;
 
@@ -61,7 +63,7 @@ class PN532 {
             this.current_cards.forEach(t => {
                 if (!current_uids.has(t.getUidString())) {
                     //tag is no longer there
-                    this.events.emit("vanished", t);
+                    this.events.emit("vanish", t);
                     this.current_cards.delete(t.getUidString());
                 }
             });
@@ -88,7 +90,7 @@ class PN532 {
     }
 
     async getFirmwareVersion() {
-        let data = await this.call(c.COMMAND_GET_FIRMWARE_VERSION, 4, [], 500);
+        let data = await this.call(constants.COMMAND_GET_FIRMWARE_VERSION, 4, [], 500);
 
         return {
             ic_version: data[0],
@@ -104,22 +106,22 @@ class PN532 {
 
     async scanTag() {
         var maxNumberOfTargets = 0x02;
-        var baudRate = c.CARD_ISO14443A;
+        var baudRate = constants.CARD_ISO14443A;
 
         let start = Date.now();
 
         try {
             if (this.current_cards.size) {
                 this.debug("Releasing all targets");
-                await this.sendCommand(c.COMMAND_IN_RELEASE, [0x00], 500);
+                await this.sendCommand(constants.COMMAND_IN_RELEASE, [0x00], 500);
             }
 
             this.debug("Listening for targets passively");
-            if (await this.sendCommand(c.COMMAND_IN_LIST_PASSIVE_TARGET, [maxNumberOfTargets, baudRate], this.poll_interval)) {
+            if (await this.sendCommand(constants.COMMAND_IN_LIST_PASSIVE_TARGET, [maxNumberOfTargets, baudRate], this.poll_interval)) {
                 let timeout = this.poll_interval - (Date.now() - start);
                 this.debug("Listen command sent, waiting " + timeout + "ms if there is something to read");
 
-                let response = await this.processResponse(c.COMMAND_IN_LIST_PASSIVE_TARGET, 30, timeout);
+                let response = await this.processResponse(constants.COMMAND_IN_LIST_PASSIVE_TARGET, 30, timeout);
 
                 // Check only 1 card with up to a 7 byte UID is present.
                 if (response[0] > maxNumberOfTargets) throw new Error("Card count mismatch")
@@ -163,7 +165,7 @@ class PN532 {
 
         // Build frame data with command and parameters.
         let data = Buffer.alloc(2 + params.length);
-        data[0] = c.DIRECTION_HOST_TO_PN532;
+        data[0] = constants.DIRECTION_HOST_TO_PN532;
         data[1] = command & 0xFF;
 
         for (let i = 0; i < params.length; i++) {
@@ -183,8 +185,8 @@ class PN532 {
         this.debug("Reading ACK");
 
         // Verify ACK response and wait to be ready for function response.
-        let ret = await this.readData(c.ACK.length);
-        if (ret.compare(new Buffer.from(c.ACK)) != 0) {
+        let ret = await this.readData(constants.ACK.length);
+        if (ret.compare(new Buffer.from(constants.ACK)) != 0) {
             throw new Error("Did not receive expected ACK from PN532!");
         }
 
@@ -204,7 +206,7 @@ class PN532 {
         let response = await this.readFrame(response_length + 2);
 
         // Check that response is for the called function.
-        if (!(response[0] == c.DIRECTION_PN532_TO_HOST && response[1] == (command + 1)))
+        if (!(response[0] == constants.DIRECTION_PN532_TO_HOST && response[1] == (command + 1)))
             throw new Error("Received unexpected command response!")
 
         // Return response data.
@@ -365,26 +367,26 @@ class PN532 {
     async wakeup() {
         this.debug("sending sam configuration for wakeup");
         this.low_power = false;
-        await this.call(c.COMMAND_SAMCONFIGURATION, 0, [0x01, 0x14, 0x01]);
+        await this.call(constants.COMMAND_SAMCONFIGURATION, 0, [0x01, 0x14, 0x01]);
     }
 
     async powerdown() {
         this.debug("sending powerdown");
         //Enable wakeup on I2C, SPI, UART
-        let resp = await this.call(c.COMMAND_POWER_DOWN, 0, [0xB0, 0x00]);
+        let resp = await this.call(constants.COMMAND_POWER_DOWN, 0, [0xB0, 0x00]);
 
         //if 0, success
         this.low_power = resp[0] === 0;
     }
 
-    async readBlock(tag, blockAddress, authKey, authType = c.MIFARE_COMMAND_AUTH_A) {
+    async readBlock(tag, blockAddress, authKey, authType = constants.MIFARE_COMMAND_AUTH_A) {
         //try to read mifare classic card
 
         await this.authenticateBlock(tag, blockAddress, authKey, authType);
 
-        let resp = await this.call(c.COMMAND_IN_DATA_EXCHANGE, 17, [
+        let resp = await this.call(constants.COMMAND_IN_DATA_EXCHANGE, 17, [
             tag.num, //number of the card
-            c.MIFARE_COMMAND_READ,
+            constants.MIFARE_COMMAND_READ,
             blockAddress & 0xFF //block address,
         ]);
 
@@ -393,16 +395,16 @@ class PN532 {
         return resp.subarray(1);
     }
 
-    async writeBlock(tag, blockAddress, data, authKey, authType = c.MIFARE_COMMAND_AUTH_A) {
+    async writeBlock(tag, blockAddress, data, authKey, authType = constants.MIFARE_COMMAND_AUTH_A) {
         if (!data || data.length != 16) {
             throw new Error("Data must be an array of 16 bytes!");
         }
 
         await this.authenticateBlock(tag, blockAddress, authKey, authType);
 
-        let resp = await this.call(c.COMMAND_IN_DATA_EXCHANGE, 1, [
+        let resp = await this.call(constants.COMMAND_IN_DATA_EXCHANGE, 1, [
             tag.num, //number of the card
-            c.MIFARE_COMMAND_WRITE_16,
+            constants.MIFARE_COMMAND_WRITE_16,
             blockAddress & 0xFF, //block address
             ...data
         ]);
@@ -410,7 +412,7 @@ class PN532 {
         if (resp[0] !== 0) throw new Error("Failed to write block " + blockAddress + " " + resp[0]);
     }
 
-    async authenticateBlock(tag, blockAddress, authKey, authType = c.MIFARE_COMMAND_AUTH_A) {
+    async authenticateBlock(tag, blockAddress, authKey, authType = constants.MIFARE_COMMAND_AUTH_A) {
         //try to read mifare classic card
 
         //fallback to factory default KeyA
@@ -424,23 +426,8 @@ class PN532 {
             ...tag.uid
         ];
 
-        let resp = await this.call(c.COMMAND_IN_DATA_EXCHANGE, 1, params);
+        let resp = await this.call(constants.COMMAND_IN_DATA_EXCHANGE, 1, params);
 
         if (resp[0] !== 0) throw new Error("Failed to authenticate block " + blockAddress + " " + resp[0])
     }
 }
-
-(async function () {
-    let asd = new PN532();
-    await asd.init();
-    asd.poll();
-    // console.log(await asd.getFirmwareVersion());
-    // await asd.powerdown();
-
-    asd.events.on("tag", async tag => {
-        asd.stopPoll();
-        // console.log(await asd.writeBlock(tag, 4, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
-        // console.log(await asd.writeBlock(tag, 4, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]));
-        // console.log(await asd.readBlock(tag, 4));
-    });
-})();
