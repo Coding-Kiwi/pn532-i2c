@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "debug": "^4.3.4",
     "i2c-bus": "^5.2.3"
   }
 }
