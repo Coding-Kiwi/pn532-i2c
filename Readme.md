@@ -55,6 +55,6 @@ await writeBlock(tag, 4, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
 ### More information
 
-NXP Docs: https://www.nxp.com/docs/en/user-guide/141520.pdf
-pn532 node red: https://github.com/RAKWireless/node-red-nodes/tree/master/node-red-contrib-pn532-i2c
-pn532 using i2c bundle: https://github.com/techniq/node-pn532/blob/master/src/pn532_i2c.js
+NXP Docs: https://www.nxp.com/docs/en/user-guide/141520.pdf  
+pn532 node red: https://github.com/RAKWireless/node-red-nodes/tree/master/node-red-contrib-pn532-i2c  
+pn532 using i2c bundle: https://github.com/techniq/node-pn532/blob/master/src/pn532_i2c.js  
