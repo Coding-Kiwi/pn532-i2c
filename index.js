@@ -130,14 +130,12 @@ export default class PN532 {
 
                 let tag = new Tag();
                 let offset = tag.readISO14443A(response.subarray(1));
-                if (tag.uid.length !== 4) throw new Error("Expected 4 byte uid");
 
                 res.push(tag);
 
                 if (maxNumberOfTargets > 1 && response.length > 2 + offset) {
                     let tag = new Tag();
                     tag.readISO14443A(response.subarray(1 + offset));
-                    if (tag.uid.length !== 4) throw new Error("Expected 4 byte uid");
                     res.push(tag);
                 }
 
