@@ -433,6 +433,18 @@ export default class PN532 {
         if (resp[0] !== 0) throw new Error("Failed to authenticate block " + blockAddress + " " + resp[0])
     }
 
+    async readMifareUltralight(tag, blockAddress) {
+        let resp = await this.call(constants.COMMAND_IN_DATA_EXCHANGE, 17, [
+            tag.num, //number of the card
+            constants.MIFARE_COMMAND_READ,
+            blockAddress & 0xFF //block address,
+        ]);
+
+        if (resp[0] !== 0) throw new Error("Failed to read block " + blockAddress + " " + resp[0]);
+
+        return resp.subarray(1);
+    }
+
     async writeMifareUltralight(tag, blockAddress, data) {
         if (!data || data.length != 4) {
             throw new Error("Data must be an array of 4 bytes!");
