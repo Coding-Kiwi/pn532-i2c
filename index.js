@@ -192,6 +192,8 @@ export default class PN532 {
     }
 
     async processResponse(command, response_length = 0, timeout = 1000) {
+        this.debug("Processing response for command " + command + " expecting length " + response_length);
+
         /* Process the response from the PN532 and expect up to response_length
         bytes back in a response.  Note that less than the expected bytes might
         be returned! Will wait up to timeout seconds for a response and return
@@ -205,7 +207,7 @@ export default class PN532 {
 
         // Check that response is for the called function.
         if (!(response[0] == constants.DIRECTION_PN532_TO_HOST && response[1] == (command + 1)))
-            throw new Error("Received unexpected command response!")
+            throw new Error("Received unexpected command response!" + JSON.stringify(response))
 
         // Return response data.
         this.debug("Read %o", response);
@@ -266,6 +268,8 @@ export default class PN532 {
                  */
         // Read frame with expected length of data.
         let response = await this.readData(length + 7);
+
+        this.debug("received data %O", response);
 
         // Swallow all the 0x00 values that preceed 0xFF.
         let offset = 0
@@ -427,5 +431,20 @@ export default class PN532 {
         let resp = await this.call(constants.COMMAND_IN_DATA_EXCHANGE, 1, params);
 
         if (resp[0] !== 0) throw new Error("Failed to authenticate block " + blockAddress + " " + resp[0])
+    }
+
+    async writeMifareUltralight(tag, blockAddress, data) {
+        if (!data || data.length != 4) {
+            throw new Error("Data must be an array of 4 bytes!");
+        }
+
+        let resp = await this.call(constants.COMMAND_IN_DATA_EXCHANGE, 1, [
+            tag.num, //number of the card
+            constants.MIFARE_COMMAND_WRITE_4,
+            blockAddress & 0xFF, //block address
+            ...data
+        ]);
+
+        if (resp[0] !== 0) throw new Error("Failed to write block " + blockAddress + " " + resp[0]);
     }
 }
