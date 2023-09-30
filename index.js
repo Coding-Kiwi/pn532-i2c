@@ -84,6 +84,7 @@ export default class PN532 {
     stopPoll() {
         if (this.poll_timeout !== null) {
             clearTimeout(this.poll_timeout);
+            this.poll_timeout = null;
         }
 
         this.poll_interval = null;
