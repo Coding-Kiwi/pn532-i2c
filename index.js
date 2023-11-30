@@ -32,7 +32,7 @@ export default class PN532 {
         }
     }
 
-    poll(interval = 1000) {
+    poll(interval = 1000, maxTargets = 1) {
         if (!this._wire) throw new Error("not initialized");
         if (this.poll_timeout !== null) throw new Error("already polling");
 
@@ -41,32 +41,36 @@ export default class PN532 {
 
         var scanTag = async () => {
             let start = Date.now();
-            let tags = await this.scanTag();
+            try {
+                let tags = await this.scanTag(maxTargets);
 
-            let current_uids = new Set();
+                let current_uids = new Set();
 
-            tags.forEach(tag => {
-                let uid = tag.getUidString();
-                current_uids.add(uid);
+                tags.forEach(tag => {
+                    let uid = tag.getUidString();
+                    current_uids.add(uid);
 
-                if (this.current_cards.has(uid)) {
-                    //update the num
-                    this.current_cards.get(uid).num = tag.num;
-                    return;
-                }
+                    if (this.current_cards.has(uid)) {
+                        //update the num
+                        this.current_cards.get(uid).num = tag.num;
+                        return;
+                    }
 
-                //seems to be a new one
-                this.current_cards.set(uid, tag);
-                this.events.emit("tag", tag);
-            });
+                    //seems to be a new one
+                    this.current_cards.set(uid, tag);
+                    this.events.emit("tag", tag);
+                });
 
-            this.current_cards.forEach(t => {
-                if (!current_uids.has(t.getUidString())) {
-                    //tag is no longer there
-                    this.events.emit("vanish", t);
-                    this.current_cards.delete(t.getUidString());
-                }
-            });
+                this.current_cards.forEach(t => {
+                    if (!current_uids.has(t.getUidString())) {
+                        //tag is no longer there
+                        this.events.emit("vanish", t);
+                        this.current_cards.delete(t.getUidString());
+                    }
+                });
+            } catch (error) {
+                this.debug("Failed scanning in poll %o", error);
+            }
 
             //the scan can take between 0 and interval ms because it resolves instantly if a card is present
             let passed = Date.now() - start;
@@ -105,8 +109,7 @@ export default class PN532 {
         }
     }
 
-    async scanTag() {
-        var maxNumberOfTargets = 0x02;
+    async scanTag(maxNumberOfTargets = 0x01) {
         var baudRate = constants.CARD_ISO14443A;
 
         let start = Date.now();
@@ -148,6 +151,7 @@ export default class PN532 {
             if (err.message === "Timed out") {
                 this.debug("Timed out, no card present");
                 //timed out, this means there was no tag to read
+                //but it can also happen that there are 2 cards and reading took too long
                 return [];
             }
 
