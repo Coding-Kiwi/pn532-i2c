@@ -1,4 +1,4 @@
-export default class Tag {
+export default class ISO14443ATag {
     constructor() {
         this.uid = null;
     }
@@ -15,7 +15,7 @@ export default class Tag {
      * @param {Buffer} buffer 
      * @returns {Number} amount of read bytes
      */
-    readISO14443A(buffer) {
+    readFromBuffer(buffer) {
         this.num = buffer[0];
         this.sens_res = (buffer[1] << 8) || buffer[2];
         this.sel_res = buffer[3];
