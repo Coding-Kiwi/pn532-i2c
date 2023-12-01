@@ -1,10 +1,9 @@
 export default class Frame {
-
     parse() {
 
     }
 
-    getFrame() {
+    buildFrame() {
 
     }
 }

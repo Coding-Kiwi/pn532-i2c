@@ -5,6 +5,8 @@ import PN532 from "../index.js";
 
     await pn532.init();
 
+    console.log(await pn532.getFirmwareVersion());
+
     pn532.poll();
 
     pn532.events.on("tag", async tag => {

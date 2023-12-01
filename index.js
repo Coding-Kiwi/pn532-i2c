@@ -2,11 +2,13 @@ import debug from 'debug';
 import EventEmitter from 'events';
 
 import I2CConnection from "./src/i2c/I2CConnection.js";
-import { CARD_ISO14443A, MIFARE_COMMAND_READ } from "./src/i2c/constants.js";
+import { CARD_ISO14443A, MIFARE_COMMAND_READ, MIFARE_COMMAND_WRITE_16, MIFARE_COMMAND_WRITE_4 } from "./src/i2c/constants.js";
 import InReleaseCommand from './src/i2c/commands/InReleaseCommand.js';
 import InListPassiveTargetCommand from './src/i2c/commands/InListPassiveTargetCommand.js';
 import MifareAuthenticateCommand from './src/i2c/commands/MifareAuthenticateCommand.js';
 import InDataExchangeCommand from './src/i2c/commands/InDataExchangeCommand.js';
+import GetFirmwareVersionCommand from './src/i2c/commands/GetFirmwareVersionCommand.js';
+import PowerDownCommand from './src/i2c/commands/PowerDownCommand.js';
 
 export default class PN532 {
     constructor(options = {}) {
@@ -134,24 +136,65 @@ export default class PN532 {
     }
 
     async readBlock(tag, block_address, auth_key, auth_type) {
-        //try to read mifare classic card
-
         this.debug("authenticating");
+
         await this.connection.sendCommand(new MifareAuthenticateCommand(
             tag, block_address, auth_key, auth_type
         ));
 
-        this.debug("reading block");
+        this.debug("reading block %d", block_address);
+
         return await this.connection.sendCommand(new InDataExchangeCommand(
             tag, [MIFARE_COMMAND_READ, block_address & 0xFF]
         ));
     }
 
+    async writeBlock(tag, block_address, data, auth_key, auth_type) {
+        if (!data || data.length != 16) {
+            throw new Error("Data must be an array of 16 bytes!");
+        }
+
+        this.debug("authenticating");
+
+        await this.connection.sendCommand(new MifareAuthenticateCommand(
+            tag, block_address, auth_key, auth_type
+        ));
+
+        this.debug("writing block %d", block_address);
+
+        return await this.connection.sendCommand(new InDataExchangeCommand(
+            tag, [MIFARE_COMMAND_WRITE_16, block_address & 0xFF, ...data]
+        ));
+    }
+
     async readMifareUltralight(tag, block_address) {
-        this.debug("reading block");
+        this.debug("reading block %d", block_address);
 
         return await this.connection.sendCommand(new InDataExchangeCommand(
             tag, [MIFARE_COMMAND_READ, block_address & 0xFF]
         ));
+    }
+
+    async writeMifareUltralight(tag, blockAddress, data) {
+        if (!data || data.length != 4) {
+            throw new Error("Data must be an array of 4 bytes!");
+        }
+
+        this.debug("writing block %d", block_address);
+
+        return await this.connection.sendCommand(new InDataExchangeCommand(
+            tag, [MIFARE_COMMAND_WRITE_4, block_address & 0xFF, ...data]
+        ));
+    }
+
+    async getFirmwareVersion() {
+        this.debug("getting fw version");
+        return await this.connection.sendCommand(new GetFirmwareVersionCommand(), 500);
+    }
+
+    async powerdown() {
+        this.debug("powering down");
+        await this.connection.sendCommand(new PowerDownCommand(), 500);
+        this.low_power = true;
     }
 }

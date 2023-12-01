@@ -1,5 +1,5 @@
 import { CARD_ISO14443A, COMMAND_IN_LIST_PASSIVE_TARGET } from "../constants.js";
-import ISO14443ATag from "../lib/ISO14443ATag.js";
+import ISO14443ATag from "../tags/ISO14443ATag.js";
 import Command from "./Command.js";
 
 export default class InListPassiveTargetCommand extends Command {
