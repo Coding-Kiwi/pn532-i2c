@@ -8,24 +8,22 @@ export default class ExtendedInformationFrame extends Frame {
         this.data = [];
     }
 
-    parse(arr) {
-        if (arr[0] !== 0x00) throw new Error("Invalid preamble");
-        if (arr[1] !== 0x00 || arr[1] !== 0xff) throw new Error("Invalid start of packet code");
-        if (arr[2] !== 0xFF || arr[3] !== 0xFF) throw new Error("Invalid fixed packet length");
-        if (arr[arr.length - 1] !== 0x00) throw new Error("Invalid postamble");
+    read(buff) {
+        if (buff[5] === 0x7F) throw new Error("Application Level Error");
 
         let len_m = arr[4];
         let len_l = arr[5];
         let length = len_m * 256 + len_l;
 
         let len_checksum = arr[6];
-        let id = arr[7]; //d4 for out, d5 for in
 
-        this.data = arr.slice(8, 8 + length);
-        let data_checksum = arr[8 + length];
+        this.data = buff.subarray(8, 8 + length - 1);
+
+        //TODO validate
+        let data_checksum = buff[6 + length];
     }
 
-    getFrame() {
+    buildFrame() {
         let frame = Buffer.alloc(5);
 
         frame[0] = 0x00; //preamble
@@ -34,16 +32,18 @@ export default class ExtendedInformationFrame extends Frame {
         frame[3] = 0xFF; //fixed length
         frame[4] = 0xFF; //fixed length
 
-        let length = this.data.length;
+        let length = this.data.length + 1;
         frame[5] = Math.floor(length / 255) & 0xFF; //length m
         frame[6] = length % 255; //length l
         frame[7] = (~(frame[5] + frame[6]) + 1) & 0xFF; //length checksum
 
-        frame = Buffer.concat([frame, this.data]);
+        let data = Buffer.from([DIRECTION_HOST_TO_PN532, ...this.data]);
+
+        frame = Buffer.concat([frame, data]);
 
         let checksum = 0;
         for (let i = 0; i < length; i++) {
-            checksum += this.data[i];
+            checksum += data[i];
         }
 
         let tail = Buffer.alloc(2);

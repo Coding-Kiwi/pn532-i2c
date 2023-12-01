@@ -5,7 +5,7 @@ import PN532 from "../index.js";
 
     await pn532.init();
 
-    pn532.poll();
+    pn532.poll(1000);
 
     pn532.events.on("tag", tag => {
         console.log("New tag detected: " + tag.getUidString());

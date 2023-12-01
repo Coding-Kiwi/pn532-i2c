@@ -16,6 +16,6 @@ import PN532 from "../index.js";
         // Start with block 4 (the first block of sector 1) since sector 0
         // contains the manufacturer data and it's probably better just
         // to leave it alone unless you know what you're doing
-        console.log(await pn532.readBlock(tag, 4));
+        console.log(await pn532.readMifareUltralight(tag, 4));
     });
 })();

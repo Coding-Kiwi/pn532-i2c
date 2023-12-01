@@ -2,9 +2,11 @@ import debug from 'debug';
 import EventEmitter from 'events';
 
 import I2CConnection from "./src/i2c/I2CConnection.js";
-import { CARD_ISO14443A } from "./src/i2c/constants.js";
+import { CARD_ISO14443A, MIFARE_COMMAND_READ } from "./src/i2c/constants.js";
 import InReleaseCommand from './src/i2c/commands/InReleaseCommand.js';
 import InListPassiveTargetCommand from './src/i2c/commands/InListPassiveTargetCommand.js';
+import MifareAuthenticateCommand from './src/i2c/commands/MifareAuthenticateCommand.js';
+import InDataExchangeCommand from './src/i2c/commands/InDataExchangeCommand.js';
 
 export default class PN532 {
     constructor(options = {}) {
@@ -96,8 +98,11 @@ export default class PN532 {
     async scanTag(timeout) {
         let start = Date.now();
 
-        let in_release = await this.connection.sendCommand(new InReleaseCommand(0x00), 500);
-        if (!in_release) throw new Error("Failed to release previous targets");
+        if (this.current_cards.size) {
+            this.debug("Releasing all targets");
+            let in_release = await this.connection.sendCommand(new InReleaseCommand(0x00), 500);
+            if (!in_release) throw new Error("Failed to release previous targets");
+        }
 
         timeout -= (Date.now() - start);
 
@@ -110,6 +115,8 @@ export default class PN532 {
             ), timeout);
 
             if (tags === false) throw new Error("sending list passive command failed");
+
+            this.debug("Got %d tags", tags.length);
 
             return tags;
         } catch (err) {
@@ -124,5 +131,27 @@ export default class PN532 {
         }
 
         return [];
+    }
+
+    async readBlock(tag, block_address, auth_key, auth_type) {
+        //try to read mifare classic card
+
+        this.debug("authenticating");
+        await this.connection.sendCommand(new MifareAuthenticateCommand(
+            tag, block_address, auth_key, auth_type
+        ));
+
+        this.debug("reading block");
+        return await this.connection.sendCommand(new InDataExchangeCommand(
+            tag, [MIFARE_COMMAND_READ, block_address & 0xFF]
+        ));
+    }
+
+    async readMifareUltralight(tag, block_address) {
+        this.debug("reading block");
+
+        return await this.connection.sendCommand(new InDataExchangeCommand(
+            tag, [MIFARE_COMMAND_READ, block_address & 0xFF]
+        ));
     }
 }

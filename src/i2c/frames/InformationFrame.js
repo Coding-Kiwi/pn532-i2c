@@ -8,6 +8,8 @@ export default class InformationFrame extends Frame {
     }
 
     read(buff) {
+        if (buff[5] === 0x7F) throw new Error("Application Level Error");
+
         let length = buff[4];
 
         this.data = buff.subarray(6, 6 + length - 1);

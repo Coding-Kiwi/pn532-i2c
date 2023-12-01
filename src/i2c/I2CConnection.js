@@ -48,8 +48,8 @@ export default class I2CConnection {
 
         let sam = await this.sendCommand(new SAMConfigurationCommand(
             SAMCONFIGURATION_MODE_NORMAL,
-            0x14, //why timeout when in normal
-            0x01 //why irq pin
+            0x00, //no timeout
+            0x00  //no irq pin
         ));
 
         if (!sam) throw Error("SAMConfigurationCommand failed");

@@ -12,19 +12,17 @@ export default class InListPassiveTargetCommand extends Command {
 
     handleResponse(infoframe) {
         if (this.baud_rate === CARD_ISO14443A) {
-            let targetnum = infoframe.data[1];
-
-            if (targetnum !== this.max_targets) throw new Error("Target number mismatch");
+            let target_count = infoframe.data[1];
 
             let tags = [];
 
             let tag = new ISO14443ATag();
-            let bytes_read = tag.readFromBuffer(infoframe.data.subarray(1));
+            let bytes_read = tag.readFromBuffer(infoframe.data.subarray(2));
             tags.push(tag);
 
-            if (targetnum > 1 && infoframe.data.length > 2 + bytes_read) {
+            if (target_count > 1 && infoframe.data.length > 3 + bytes_read) {
                 let tag2 = new ISO14443ATag();
-                tag2.readFromBuffer(infoframe.data.subarray(1 + bytes_read));
+                tag2.readFromBuffer(infoframe.data.subarray(2 + bytes_read));
                 tags.push(tag2);
             }
 
@@ -32,9 +30,5 @@ export default class InListPassiveTargetCommand extends Command {
         }
 
         return false;
-    }
-
-    readTarget(data) {
-
     }
 }
