@@ -1,6 +1,6 @@
 {
   "name": "pn532-i2c",
-  "version": "1.0.4",
+  "version": "2.0.0",
   "description": "npm module for using the pn532 nfc module via i2c",
   "main": "index.js",
   "type": "module",
