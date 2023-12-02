@@ -2,6 +2,8 @@
 
 Module for working with the PN532 via I2C, for example on a Raspberry Pi.
 
+[npm](https://www.npmjs.com/package/pn532-i2c)
+
 ## Limitations
 
 * As the name suggests only i2c is currently supported
